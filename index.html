@@ -354,6 +354,11 @@ if('ontouchstart' in window || navigator.maxTouchPoints>0){
   });
 }
 document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
+// Prevent Safari/iPad double-tap zoom and pinch zoom
+document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});
+document.addEventListener('gesturechange',e=>e.preventDefault(),{passive:false});
+document.addEventListener('gestureend',e=>e.preventDefault(),{passive:false});
+document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
 
 /* ═══ GAME LOGIC ═══ */
 function startGame(){
@@ -496,6 +501,16 @@ function ghostTarget(g){
 
 
 
+/* Per-ghost personality: chance of random move during chase.
+   Blinky (red)  = focused hunter, rarely deviates
+   Pinky  (pink) = creative ambusher, sometimes takes odd routes
+   Inky   (cyan) = wildcard, very unpredictable
+   Clyde  (orange)= easily distracted, wanders often */
+function personalityRandom(g){
+  const base={blinky:0.05, pinky:0.15, inky:0.35, clyde:0.28}[g.name]||0.15;
+  return isKid()? Math.min(base*1.5, 0.50) : base;
+}
+
 function ghostDecideSegment(g){
   const tx=g.x|0, ty=g.y|0;
 
@@ -534,8 +549,17 @@ function ghostDecideSegment(g){
     }
     g.dir=bestD;
   } else if(g.fright){
-    // Frightened ghosts wander (avoid immediate backtracking when possible)
-    g.dir = chooseRandomDir(tx,ty,g,true);
+    // Frightened: panicky, predictable movement (easy for kids to catch).
+    // Strong preference to keep going straight so kids can intercept.
+    const ds=legalDirs(tx,ty,g);
+    if(ds.length>0){
+      if(ds.includes(g.dir) && Math.random()<0.55){
+        /* keep going straight - very predictable */
+      } else {
+        // random turn (truly random, no smart fleeing)
+        g.dir=ds[(Math.random()*ds.length)|0];
+      }
+    }
   } else {
     // Normal: pursue target aggressively using shortest-path distance from candidate next-tiles.
     const tgt=ghostTarget(g);
@@ -557,7 +581,13 @@ function ghostDecideSegment(g){
         if(score<best){ best=score; bestD=d; }
       }
 
-      // If we're in a "stuck" tiny loop, inject a little exploration.
+      // Personality-driven randomness: each ghost sometimes deviates from optimal
+      if(Math.random()<personalityRandom(g) && nonRev.length>1){
+        const alt=nonRev.filter(d=>d!==bestD);
+        if(alt.length) bestD=alt[(Math.random()*alt.length)|0];
+      }
+
+      // If we're in a "stuck" tiny loop, break out with randomness.
       if(g.stuck && nonRev.length>1){
         if(Math.random()<0.35){
           const alt=nonRev.filter(d=>d!==bestD);
@@ -698,11 +728,13 @@ function update(dt){
   const pMs=pacStepMs();
   advanceMover(pac, dt, pMs, ()=>pacDecideSegment(), ()=>pacArrive());
 
-  // Ghosts: frightened slower, eaten faster
+  // Ghosts: per-personality speed + much slower when frightened
   const baseG=ghostStepMs();
   ghosts.forEach(g=>{
-    let ms=baseG;
-    if(g.fright) ms=ms*1.35;
+    // Per-ghost speed personality: Blinky fastest, Clyde slowest
+    const spd={blinky:0.95, pinky:1.0, inky:1.05, clyde:1.12}[g.name]||1.0;
+    let ms=baseG*spd;
+    if(g.fright) ms=ms*(isKid()? 2.0 : 1.6); // much slower when scared
     if(g.eaten)  ms=ms*0.80;
     advanceMover(g, dt, ms, (gg)=>ghostDecideSegment(gg), (gg)=>ghostArrive(gg));
   });
