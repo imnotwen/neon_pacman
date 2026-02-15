@@ -48,28 +48,28 @@ const cv=document.getElementById('c'),
    1=wall  0=dot  2=power-pellet  3=empty  5=ghost-house  6=ghost-door
    25 cols × 22 rows – left-right symmetric (center col 12) */
 const MAP=[
-  "1111111111111111111111111",
-  "1000000000000000000000001",
-  "1011110111100011110111101",
-  "1211110111100011110111121",
-  "1000000000000000000000001",
-  "1011010110101010110101101",
-  "1000010000100010000100001",
-  "1110101110111110111010111",
-  "3000101000000000001010003",
-  "1110101011116111101010111",
-  "3000000010155510100000003",
-  "1110101010155510101010111",
-  "3000101010111110101010003",
-  "1110101000000000001010111",
-  "1000000000101010000000001",
-  "1011010110001000110101101",
-  "1000010000003000000100001",
-  "1110101110111110111010111",
-  "1000000000001000000000001",
-  "1011110111100011110111101",
-  "1200000000000000000000021",
-  "1111111111111111111111111"
+  "1111111111111111111111111",  // border
+  "1200000000000000000000021",  // power pellets top corners
+  "1000000000000000000000001",  // open
+  "1101001001010101001001011",  // HANNAH row1: H_A_N_N_A_H
+  "1101011101110111011101011",  // HANNAH row2
+  "1111011101010101011101111",  // HANNAH row3 (crossbars)
+  "1101010101010101010101011",  // HANNAH row4
+  "1101010101010101010101011",  // HANNAH row5
+  "3000000000000000000000003",  // open + tunnel
+  "1000000000116110000000001",  // ghost house top + door
+  "3000000000155510000000003",  // ghost house + tunnel
+  "3000000000155510000000003",  // ghost house + tunnel
+  "1000000000111110000000001",  // ghost house bottom
+  "1000000000000000000000001",  // open
+  "1011010110000000110101101",  // structure
+  "1000010000000000000100001",  // light structure
+  "1000010000003000000100001",  // pac start row
+  "1011010110101010110101101",  // structure
+  "1000000000000000000000001",  // open
+  "1011110111100011110111101",  // structure
+  "1200000000000000000000021",  // power pellets bottom corners
+  "1111111111111111111111111"   // border
 ];
 const COLS=MAP[0].length, ROWS=MAP.length; // 25×22
 
@@ -112,24 +112,27 @@ let frightTime=0, modeTime=0, ghostMode='scatter';
 let deadTimer=0, anim=0, comboMult=0;
 
 const FRIGHT_MS=7000, SCATTER_MS=7000, CHASE_MS=20000;
-const P_SPD=120, G_SPD=140; // ms per tile move
+const BASE_P_SPD=156, BASE_G_SPD=182; // ms per tile move (~30% slower base)
+const MIN_P_SPD=120, MIN_G_SPD=140;   // original speeds = cap
+function getSpeed(base,min){ return Math.max(min, Math.round(base*(1-0.06*(level-1)))); }
 let pAccum=0, gAccum=0;
 
 /* ═══ ENTITIES ═══ */
 const PAC_START_X=12, PAC_START_Y=16;
 const GHOST_DOOR_X=12, GHOST_DOOR_Y=9, GHOST_HOUSE_Y=10;
-let pac={x:PAC_START_X, y:PAC_START_Y, dir:LT, next:LT};
+let pac={x:PAC_START_X, y:PAC_START_Y, px:PAC_START_X, py:PAC_START_Y, dir:LT, next:LT};
 
 const G_COLORS=['#ff2222','#ffb8ff','#00ffde','#ffb852'];
 const G_SCATTER=[{x:COLS-2,y:0},{x:1,y:0},{x:COLS-2,y:ROWS-1},{x:1,y:ROWS-1}];
 let ghosts=[];
 
 function spawnGhosts(){
+  const exitScale=getSpeed(BASE_G_SPD,MIN_G_SPD)/MIN_G_SPD; // >1 at early levels
   ghosts=[
-    {x:12,y:8 ,dir:LT, color:G_COLORS[0],scatter:G_SCATTER[0],house:false,exitT:0,    fright:false,eaten:false,name:'blinky'},
-    {x:12,y:10,dir:UP, color:G_COLORS[1],scatter:G_SCATTER[1],house:true, exitT:0,    fright:false,eaten:false,name:'pinky'},
-    {x:11,y:10,dir:UP, color:G_COLORS[2],scatter:G_SCATTER[2],house:true, exitT:4000, fright:false,eaten:false,name:'inky'},
-    {x:13,y:10,dir:UP, color:G_COLORS[3],scatter:G_SCATTER[3],house:true, exitT:7000, fright:false,eaten:false,name:'clyde'}
+    {x:12,y:8 ,px:12,py:8 ,dir:LT, color:G_COLORS[0],scatter:G_SCATTER[0],house:false,exitT:0,                   fright:false,eaten:false,name:'blinky'},
+    {x:12,y:10,px:12,py:10,dir:UP, color:G_COLORS[1],scatter:G_SCATTER[1],house:true, exitT:0,                   fright:false,eaten:false,name:'pinky'},
+    {x:11,y:10,px:11,py:10,dir:UP, color:G_COLORS[2],scatter:G_SCATTER[2],house:true, exitT:Math.round(4000*exitScale), fright:false,eaten:false,name:'inky'},
+    {x:13,y:10,px:13,py:10,dir:UP, color:G_COLORS[3],scatter:G_SCATTER[3],house:true, exitT:Math.round(7000*exitScale), fright:false,eaten:false,name:'clyde'}
   ];
 }
 spawnGhosts();
@@ -207,7 +210,9 @@ function startGame(){
 }
 
 function resetPositions(){
-  pac.x=PAC_START_X; pac.y=PAC_START_Y; pac.dir=LT;
+  pac.x=PAC_START_X; pac.y=PAC_START_Y;
+  pac.px=PAC_START_X; pac.py=PAC_START_Y;
+  pac.dir=LT;
   inputDir=-1; pAccum=0; gAccum=0;
   spawnGhosts();
 }
@@ -325,14 +330,31 @@ function update(dt){
 
   /* move pac-man */
   pAccum+=dt;
-  while(pAccum>=P_SPD){ pAccum-=P_SPD; movePac(); if(state!=='playing') return; }
+  const pSpd=getSpeed(BASE_P_SPD,MIN_P_SPD);
+  while(pAccum>=pSpd){ pAccum-=pSpd; movePac(); if(state!=='playing') return; }
 
   /* move ghosts (slower when frightened) */
   gAccum+=dt;
-  const gs=frightTime>0? G_SPD*1.35 : G_SPD;
+  const gSpd=getSpeed(BASE_G_SPD,MIN_G_SPD);
+  const gs=frightTime>0? gSpd*1.35 : gSpd;
   while(gAccum>=gs){ gAccum-=gs; ghosts.forEach(g=>moveGhost(g)); }
 
   checkCollisions();
+
+  /* interpolate visual positions toward logical grid positions */
+  const lerpRate=0.25;
+  function lerp(a,b,t){ return a+(b-a)*t; }
+  // Handle wrap-around for pac (tunnel)
+  let ptx=pac.x, ppx=pac.px;
+  if(Math.abs(ptx-ppx)>COLS/2){ ppx=ptx; } // snap on wrap
+  pac.px=lerp(ppx,ptx,lerpRate);
+  pac.py=lerp(pac.py,pac.y,lerpRate);
+  ghosts.forEach(g=>{
+    let gtx=g.x, gpx=g.px;
+    if(Math.abs(gtx-gpx)>COLS/2){ gpx=gtx; }
+    g.px=lerp(gpx,gtx,lerpRate);
+    g.py=lerp(g.py,g.y,lerpRate);
+  });
 }
 
 /* ═══ RENDERING ═══ */
@@ -346,12 +368,21 @@ function drawBG(){
 
 function drawWalls(){
   cx.save();
+  /* fill wall tiles with neon blue/purple gradient */
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    if(grid[r][c]!==1) continue;
+    const x=c*T, y=r*T;
+    const t=r/ROWS; // 0 at top, 1 at bottom
+    const rb=Math.round(10+30*t), gb=Math.round(10+15*(1-t)), bb=Math.round(60+50*(1-t));
+    cx.fillStyle='rgb('+rb+','+gb+','+bb+')';
+    cx.fillRect(x,y,T,T);
+  }
+  /* edge glow lines */
   cx.shadowBlur=10; cx.shadowColor='#0af';
   cx.strokeStyle='#08f'; cx.lineWidth=2;
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(grid[r][c]!==1) continue;
     const x=c*T, y=r*T;
-    // draw edge lines between wall and non-wall
     if(r===0||grid[r-1][c]!==1){cx.beginPath();cx.moveTo(x,y);cx.lineTo(x+T,y);cx.stroke();}
     if(r===ROWS-1||grid[r+1][c]!==1){cx.beginPath();cx.moveTo(x,y+T);cx.lineTo(x+T,y+T);cx.stroke();}
     if(c===0||grid[r][c-1]!==1){cx.beginPath();cx.moveTo(x,y);cx.lineTo(x,y+T);cx.stroke();}
@@ -388,7 +419,7 @@ function drawDots(){
 
 function drawPac(){
   if(state==='dead'||state==='over') return;
-  const px=pac.x*T+T/2, py=pac.y*T+T/2, r=T*.44;
+  const px=pac.px*T+T/2, py=pac.py*T+T/2, r=T*.44;
   const mouth=.15+.3*Math.abs(Math.sin(anim*.2));
   const ang=[Math.PI*1.5,0,Math.PI*.5,Math.PI][pac.dir];
   cx.save();cx.shadowBlur=18;cx.shadowColor='#ff0';cx.fillStyle='#ffe800';
@@ -424,7 +455,7 @@ function drawEyes(gx,gy,dir){
 }
 
 function drawGhost(g){
-  const gx=g.x*T+T/2, gy=g.y*T+T/2, r=T*.42;
+  const gx=g.px*T+T/2, gy=g.py*T+T/2, r=T*.42;
   if(g.eaten){drawEyes(gx,gy,g.dir);return;}
   let col=g.color;
   if(g.fright) col=(frightTime<2000&&(anim>>3)&1)?'#fff':'#2233ff';
