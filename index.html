@@ -13,16 +13,22 @@ body{display:flex;flex-direction:column;align-items:center;justify-content:cente
 #hud{color:#0ff;font-size:15px;padding:6px 0;text-align:center;
   text-shadow:0 0 8px #0ff;letter-spacing:1px;white-space:nowrap;z-index:5}
 canvas{display:block}
-#dpad{display:none;position:fixed;bottom:28px;right:28px;
-  width:140px;height:140px;z-index:100;opacity:.7}
-.db{position:absolute;width:44px;height:44px;
-  background:rgba(0,255,255,.1);border:1.5px solid rgba(0,255,255,.35);
-  border-radius:10px;color:rgba(0,255,255,.8);font-size:20px;
+#dpad{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+  width:164px;height:164px;z-index:100;opacity:.85}
+.db{position:absolute;width:52px;height:52px;
+  background:rgba(0,255,255,.15);border:2px solid rgba(0,255,255,.45);
+  border-radius:12px;color:rgba(0,255,255,.9);font-size:22px;
   display:flex;align-items:center;justify-content:center;
   -webkit-tap-highlight-color:transparent}
-.db:active,.db.on{background:rgba(0,255,255,.35);border-color:rgba(0,255,255,.7)}
-#dU{top:0;left:48px}#dD{bottom:0;left:48px}
-#dL{top:48px;left:0}#dR{top:48px;right:0}
+.db:active,.db.on{background:rgba(0,255,255,.45);border-color:rgba(0,255,255,.8)}
+#dU{top:0;left:56px}#dD{bottom:0;left:56px}
+#dL{top:56px;left:0}#dR{top:56px;right:0}
+@media(min-width:600px){
+  #dpad{width:220px;height:220px;bottom:24px}
+  .db{width:68px;height:68px;font-size:28px;border-radius:16px}
+  #dU{top:0;left:76px}#dD{bottom:0;left:76px}
+  #dL{top:76px;left:0}#dR{top:76px;right:0}
+}
 </style>
 </head>
 <body>
@@ -37,6 +43,87 @@ canvas{display:block}
 <script>
 (function(){
 "use strict";
+
+/* ═══ SOUND ═══ */
+const SndCtx=window.AudioContext||window.webkitAudioContext;
+let sndCtx=null;
+function ensureSnd(){
+  if(!sndCtx) sndCtx=new SndCtx();
+  if(sndCtx.state==='suspended') sndCtx.resume();
+}
+function tone(freq,dur,type,vol){
+  ensureSnd(); const t=sndCtx.currentTime;
+  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+  o.type=type||'square'; o.frequency.value=freq;
+  g.gain.setValueAtTime(vol||0.08,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+  o.connect(g); g.connect(sndCtx.destination);
+  o.start(t); o.stop(t+dur);
+}
+let wakaFlip=false;
+function sfxDot(){
+  // alternating waka-waka
+  tone(wakaFlip?520:480, 0.06, 'square', 0.06);
+  wakaFlip=!wakaFlip;
+}
+function sfxPower(){
+  ensureSnd(); const t=sndCtx.currentTime;
+  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+  o.type='square';
+  o.frequency.setValueAtTime(200,t);
+  o.frequency.linearRampToValueAtTime(900,t+0.3);
+  g.gain.setValueAtTime(0.10,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+  o.connect(g); g.connect(sndCtx.destination);
+  o.start(t); o.stop(t+0.4);
+}
+function sfxEatGhost(){
+  ensureSnd(); const t=sndCtx.currentTime;
+  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+  o.type='sawtooth';
+  o.frequency.setValueAtTime(300,t);
+  o.frequency.linearRampToValueAtTime(1200,t+0.12);
+  o.frequency.linearRampToValueAtTime(600,t+0.25);
+  g.gain.setValueAtTime(0.10,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  o.connect(g); g.connect(sndCtx.destination);
+  o.start(t); o.stop(t+0.3);
+}
+function sfxDeath(){
+  ensureSnd(); const t=sndCtx.currentTime;
+  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+  o.type='square';
+  o.frequency.setValueAtTime(500,t);
+  o.frequency.linearRampToValueAtTime(80,t+0.7);
+  g.gain.setValueAtTime(0.10,t);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.8);
+  o.connect(g); g.connect(sndCtx.destination);
+  o.start(t); o.stop(t+0.8);
+}
+function sfxWin(){
+  ensureSnd(); const t=sndCtx.currentTime;
+  [523,659,784,1047].forEach((f,i)=>{
+    const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+    o.type='square'; o.frequency.value=f;
+    g.gain.setValueAtTime(0,t+i*0.12);
+    g.gain.linearRampToValueAtTime(0.09,t+i*0.12+0.03);
+    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.18);
+    o.connect(g); g.connect(sndCtx.destination);
+    o.start(t+i*0.12); o.stop(t+i*0.12+0.2);
+  });
+}
+function sfxStart(){
+  ensureSnd(); const t=sndCtx.currentTime;
+  [262,330,392,523].forEach((f,i)=>{
+    const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+    o.type='square'; o.frequency.value=f;
+    g.gain.setValueAtTime(0,t+i*0.08);
+    g.gain.linearRampToValueAtTime(0.08,t+i*0.08+0.02);
+    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.08+0.12);
+    o.connect(g); g.connect(sndCtx.destination);
+    o.start(t+i*0.08); o.stop(t+i*0.08+0.15);
+  });
+}
 
 /* ═══ CANVAS ═══ */
 const cv=document.getElementById('c'),
@@ -326,13 +413,14 @@ function interpPos(m){
 /* ═══ INPUT ═══ */
 let inputDir=-1;
 document.addEventListener('keydown',e=>{
+  ensureSnd(); // unlock audio on first interaction
   switch(e.key){
     case'ArrowUp':case'w':case'W':inputDir=UP;break;
     case'ArrowRight':case'd':case'D':inputDir=RT;break;
     case'ArrowDown':case's':case'S':inputDir=DN;break;
     case'ArrowLeft':case'a':case'A':inputDir=LT;break;
     case' ':case'Enter':
-      if(state!=='playing') startGame();
+      if(state==='title'||state==='over'||state==='win') startGame();
       break;
     default: return;
   }
@@ -345,8 +433,8 @@ if('ontouchstart' in window || navigator.maxTouchPoints>0){
   const map={dU:UP,dD:DN,dL:LT,dR:RT};
   Object.entries(map).forEach(([id,dir])=>{
     const b=document.getElementById(id);
-    const on=e=>{e.preventDefault();inputDir=dir;b.classList.add('on');
-      if(state!=='playing') startGame();};
+    const on=e=>{e.preventDefault();ensureSnd();inputDir=dir;b.classList.add('on');
+      if(state==='title'||state==='over'||state==='win') startGame();};
     const off=e=>{e.preventDefault();b.classList.remove('on');};
     b.addEventListener('touchstart',on,{passive:false});
     b.addEventListener('touchend',off,{passive:false});
@@ -362,6 +450,7 @@ document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
 
 /* ═══ GAME LOGIC ═══ */
 function startGame(){
+  sfxStart();
   if(state==='win'){
     level++;
     resetGrid();
@@ -413,9 +502,9 @@ function pacDecideSegment(){
 function pacArrive(){
   const tx=pac.x|0, ty=pac.y|0;
   const v=grid[ty][tx];
-  if(v===0){ grid[ty][tx]=3; score+=10; dots++; }
+  if(v===0){ grid[ty][tx]=3; score+=10; dots++; sfxDot(); }
   if(v===2){
-    grid[ty][tx]=3; score+=50; dots++;
+    grid[ty][tx]=3; score+=50; dots++; sfxPower();
     frightTime=frightMs(); comboMult=0;
     ghosts.forEach(g=>{
       if(!g.house && !g.eaten){
@@ -424,7 +513,7 @@ function pacArrive(){
       }
     });
   }
-  if(dots>=totalDots) state='win';
+  if(dots>=totalDots){ state='win'; sfxWin(); }
 }
 
 function clampY(y){ return Math.max(0, Math.min(ROWS-1, y)); }
@@ -672,11 +761,11 @@ function checkCollisions(){
     if(g.fright && !g.eaten){
       g.eaten=true; g.fright=false;
       comboMult++;
-      score+=200*comboMult;
+      score+=200*comboMult; sfxEatGhost();
       // send eaten ghost back: allow reversal for responsiveness
       if(g.moving) reverseMover(g);
     } else if(!g.eaten){
-      lives--;
+      lives--; sfxDeath();
       if(lives<=0){ state='over'; deadTimer=2000; }
       else{ state='dead'; deadTimer=1000; }
       return;
@@ -960,7 +1049,7 @@ function loop(ts){
 }
 requestAnimationFrame(loop);
 
-cv.addEventListener('click',()=>{if(state!=='playing') startGame();});
+cv.addEventListener('click',()=>{if(state==='title'||state==='over'||state==='win') startGame();});
 
 })();
 </script>
