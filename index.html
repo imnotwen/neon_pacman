@@ -48,12 +48,14 @@ canvas{display:block}
 const SndCtx=window.AudioContext||window.webkitAudioContext;
 let sndCtx=null;
 function ensureSnd(){
+  if(!SndCtx) return false;
   if(!sndCtx) sndCtx=new SndCtx();
   if(sndCtx.state==='suspended') sndCtx.resume();
+  return true;
 }
 let wakaFlip=false;
 function sfxDot(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   const o=sndCtx.createOscillator(), g=sndCtx.createGain();
   o.type='sine';
   if(wakaFlip){
@@ -70,7 +72,7 @@ function sfxDot(){
   wakaFlip=!wakaFlip;
 }
 function sfxPower(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   // descending wobble like classic power pellet
   const o=sndCtx.createOscillator(), g=sndCtx.createGain();
   const lfo=sndCtx.createOscillator(), lfoG=sndCtx.createGain();
@@ -85,7 +87,7 @@ function sfxPower(){
   o.start(t); lfo.start(t); o.stop(t+0.5); lfo.stop(t+0.5);
 }
 function sfxEatGhost(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   // ascending sweep then settle - satisfying crunch
   const o=sndCtx.createOscillator(), g=sndCtx.createGain();
   o.type='sine';
@@ -99,7 +101,7 @@ function sfxEatGhost(){
   o.start(t); o.stop(t+0.36);
 }
 function sfxDeath(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   // classic descending spiral
   for(let i=0;i<11;i++){
     const o=sndCtx.createOscillator(), g=sndCtx.createGain();
@@ -113,7 +115,7 @@ function sfxDeath(){
   }
 }
 function sfxWin(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   // victory fanfare
   const notes=[523,659,784,1047,784,1047];
   const durs =[0.10,0.10,0.10,0.15,0.08,0.25];
@@ -129,7 +131,7 @@ function sfxWin(){
   });
 }
 function sfxStart(){
-  ensureSnd(); const t=sndCtx.currentTime;
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
   // simplified Pac-Man intro melody
   const notes=[523,1047,784,659,1047,784,659];
   const durs =[0.10,0.10,0.10,0.10,0.07,0.14,0.22];
@@ -142,6 +144,34 @@ function sfxStart(){
     o.connect(g); g.connect(sndCtx.destination);
     o.start(time); o.stop(time+durs[i]+0.01);
     time+=durs[i];
+  });
+}
+function sfxFruit(){
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
+  const notes=[880,1175,1568];
+  let time=t;
+  notes.forEach(f=>{
+    const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+    o.type='triangle'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.10,time);
+    g.gain.exponentialRampToValueAtTime(0.001,time+0.09);
+    o.connect(g); g.connect(sndCtx.destination);
+    o.start(time); o.stop(time+0.10);
+    time+=0.07;
+  });
+}
+function sfxExtraLife(){
+  if(!ensureSnd()) return; const t=sndCtx.currentTime;
+  const notes=[523,659,784,1047];
+  let time=t;
+  notes.forEach(f=>{
+    const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+    o.type='square'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.08,time);
+    g.gain.exponentialRampToValueAtTime(0.001,time+0.14);
+    o.connect(g); g.connect(sndCtx.destination);
+    o.start(time); o.stop(time+0.15);
+    time+=0.05;
   });
 }
 /* score popups */
@@ -212,6 +242,10 @@ let state='title'; // title | playing | dead | over | win
 let score=0, lives=3, level=1, dots=0, totalDots=0;
 let frightTime=0, modeTime=0, ghostMode='scatter';
 let deadTimer=0, anim=0, comboMult=0;
+let readyTimer=0, nextExtraLife=10000;
+let fruit=null;
+let fruitMilestones=[];
+let fruitSpawned=0;
 
 /* Easier start, ramps by level */
 const KID_LEVELS=3;
@@ -251,6 +285,55 @@ function pacStepMs(){
 function ghostStepMs(){
   const base=Math.max(G_MIN_MS, Math.round(G_BASE_MS*Math.pow(G_EXP, level-1)));
   return isKid()? Math.round(base*1.28) : base;
+}
+
+function fruitPoints(){
+  const table=[100,300,500,700,1000,2000,3000,5000];
+  return table[Math.min(level-1,table.length-1)];
+}
+
+function setupLevelEffects(){
+  readyTimer=1700;
+  fruit={active:false,x:16,y:11,timer:0};
+  fruitSpawned=0;
+  fruitMilestones=[Math.floor(totalDots*0.35),Math.floor(totalDots*0.72)];
+}
+
+function maybeAwardExtraLife(){
+  while(score>=nextExtraLife){
+    lives++;
+    sfxExtraLife();
+    addScorePopup(pac.x|0,pac.y|0,'1UP');
+    nextExtraLife+=10000;
+  }
+}
+
+function updateFruit(dt){
+  if(!fruit) return;
+  if(!fruit.active && fruitSpawned<fruitMilestones.length && dots>=fruitMilestones[fruitSpawned]){
+    fruit.active=true;
+    fruit.timer=9500;
+    fruitSpawned++;
+    sfxFruit();
+  }
+  if(fruit.active){
+    fruit.timer-=dt;
+    if(fruit.timer<=0) fruit.active=false;
+  }
+}
+
+function checkFruitPickup(){
+  if(!fruit||!fruit.active) return;
+  const pp=interpPos(pac);
+  const d2=dist2(pp.x,pp.y,fruit.x,fruit.y);
+  if(d2<=0.45*0.45){
+    fruit.active=false;
+    const pts=fruitPoints();
+    score+=pts;
+    sfxFruit();
+    addScorePopup(fruit.x,fruit.y,pts);
+    maybeAwardExtraLife();
+  }
 }
 
 /* ═══ ENTITIES ═══ */
@@ -480,16 +563,19 @@ function startGame(){
     frightTime=0; modeTime=0; ghostMode='scatter';
     inputDir=-1;
     resetPositions();
+    setupLevelEffects();
     state='playing';
     return;
   }
   state='playing';
   score=0; lives=5; level=1; dots=0;
   frightTime=0; modeTime=0; ghostMode='scatter';
+  nextExtraLife=10000;
   inputDir=-1;
   resetGrid();
   totalDots=countDots();
   resetPositions();
+  setupLevelEffects();
 }
 
 function resetPositions(){
@@ -535,6 +621,7 @@ function pacArrive(){
       }
     });
   }
+  maybeAwardExtraLife();
   if(dots>=totalDots){ state='win'; sfxWin(); }
 }
 
@@ -806,6 +893,11 @@ function update(dt){
   }
   if(state!=='playing') return;
 
+  if(readyTimer>0){
+    readyTimer-=dt;
+    if(readyTimer>0) return;
+  }
+
   /* fright timer */
   if(frightTime>0){
     frightTime-=dt;
@@ -853,6 +945,8 @@ function update(dt){
   });
 
   checkCollisions();
+  checkFruitPickup();
+  updateFruit(dt);
   updatePopups(dt);
 }
 
@@ -1073,6 +1167,35 @@ function drawPopups(){
   cx.restore();
 }
 
+function drawFruit(){
+  if(!fruit||!fruit.active) return;
+  const fx=fruit.x*T+T/2, fy=fruit.y*T+T/2;
+  const r=T*0.18;
+  cx.save();
+  cx.shadowBlur=8;
+  cx.shadowColor='#ff3366';
+  cx.fillStyle='#ff335f';
+  cx.beginPath(); cx.arc(fx-r*1.15,fy,r,0,Math.PI*2); cx.fill();
+  cx.beginPath(); cx.arc(fx+r*1.15,fy,r,0,Math.PI*2); cx.fill();
+  cx.strokeStyle='#5df75d';
+  cx.lineWidth=Math.max(2,T*0.08);
+  cx.beginPath();
+  cx.moveTo(fx,fy-r*0.4);
+  cx.quadraticCurveTo(fx+r*0.45,fy-r*1.8,fx+r*1.7,fy-r*1.3);
+  cx.stroke();
+  cx.restore();
+}
+
+function drawReadyText(){
+  if(state!=='playing' || readyTimer<=0) return;
+  cx.save();
+  cx.textAlign='center';
+  cx.fillStyle='#ffe060';
+  cx.font='bold '+Math.max(T*0.75,13)+'px sans-serif';
+  cx.fillText('READY!',cv.width/2,cv.height/2+T*2.3);
+  cx.restore();
+}
+
 function drawOverlay(title,sub){
   cx.save();
   cx.fillStyle='rgba(0,0,0,.72)';
@@ -1089,11 +1212,13 @@ function drawOverlay(title,sub){
 
 function render(){
   drawBG();drawWalls();drawDots();
+  drawFruit();
   if(state!=='title'){
     ghosts.forEach(g=>drawGhost(g));
     drawPac();
     drawPopups();
   }
+  drawReadyText();
   drawHUD();
   if(state==='title') drawOverlay('HANNAH\'S PAC-MAN','Press ENTER or Tap to Start');
   if(state==='over')  drawOverlay('GAME OVER','Score: '+score+'  -  Tap to Restart');
