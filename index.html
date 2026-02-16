@@ -3,24 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>Neon-Chomp</title>
+<title>Hannah's Pac-Man</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-html,body{width:100%;height:100%;overflow:hidden;background:#06060e;
+html,body{width:100%;height:100%;overflow:hidden;background:#000;
   touch-action:none;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 body{display:flex;flex-direction:column;align-items:center;justify-content:center;
   font-family:'Courier New',monospace}
-#hud{color:#0ff;font-size:15px;padding:6px 0;text-align:center;
-  text-shadow:0 0 8px #0ff;letter-spacing:1px;white-space:nowrap;z-index:5}
+#hud{color:#fff;font-size:15px;padding:6px 0;text-align:center;
+  letter-spacing:1px;white-space:nowrap;z-index:5}
 canvas{display:block}
 #dpad{display:none;position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
   width:164px;height:164px;z-index:100;opacity:.85}
 .db{position:absolute;width:52px;height:52px;
-  background:rgba(0,255,255,.15);border:2px solid rgba(0,255,255,.45);
-  border-radius:12px;color:rgba(0,255,255,.9);font-size:22px;
+  background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.35);
+  border-radius:12px;color:rgba(255,255,255,.8);font-size:22px;
   display:flex;align-items:center;justify-content:center;
   -webkit-tap-highlight-color:transparent}
-.db:active,.db.on{background:rgba(0,255,255,.45);border-color:rgba(0,255,255,.8)}
+.db:active,.db.on{background:rgba(255,255,100,.3);border-color:rgba(255,255,100,.7)}
 #dU{top:0;left:56px}#dD{bottom:0;left:56px}
 #dL{top:56px;left:0}#dR{top:56px;right:0}
 @media(min-width:600px){
@@ -32,7 +32,7 @@ canvas{display:block}
 </style>
 </head>
 <body>
-<div id="hud">NEON-CHOMP: HANNAH (Doodle-ish, flatter)</div>
+<div id="hud">HANNAH'S PAC-MAN</div>
 <canvas id="c"></canvas>
 <div id="dpad">
   <div class="db" id="dU">&#9650;</div>
@@ -44,86 +44,108 @@ canvas{display:block}
 (function(){
 "use strict";
 
-/* ═══ SOUND ═══ */
+/* ═══ SOUND (classic Pac-Man style) ═══ */
 const SndCtx=window.AudioContext||window.webkitAudioContext;
 let sndCtx=null;
 function ensureSnd(){
   if(!sndCtx) sndCtx=new SndCtx();
   if(sndCtx.state==='suspended') sndCtx.resume();
 }
-function tone(freq,dur,type,vol){
-  ensureSnd(); const t=sndCtx.currentTime;
-  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-  o.type=type||'square'; o.frequency.value=freq;
-  g.gain.setValueAtTime(vol||0.08,t);
-  g.gain.exponentialRampToValueAtTime(0.001,t+dur);
-  o.connect(g); g.connect(sndCtx.destination);
-  o.start(t); o.stop(t+dur);
-}
 let wakaFlip=false;
 function sfxDot(){
-  // alternating waka-waka
-  tone(wakaFlip?520:480, 0.06, 'square', 0.06);
+  ensureSnd(); const t=sndCtx.currentTime;
+  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+  o.type='sine';
+  if(wakaFlip){
+    o.frequency.setValueAtTime(432,t);
+    o.frequency.linearRampToValueAtTime(261,t+0.04);
+  } else {
+    o.frequency.setValueAtTime(261,t);
+    o.frequency.linearRampToValueAtTime(432,t+0.04);
+  }
+  g.gain.setValueAtTime(0.13,t);
+  g.gain.linearRampToValueAtTime(0,t+0.07);
+  o.connect(g); g.connect(sndCtx.destination);
+  o.start(t); o.stop(t+0.08);
   wakaFlip=!wakaFlip;
 }
 function sfxPower(){
   ensureSnd(); const t=sndCtx.currentTime;
+  // descending wobble like classic power pellet
   const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-  o.type='square';
-  o.frequency.setValueAtTime(200,t);
-  o.frequency.linearRampToValueAtTime(900,t+0.3);
-  g.gain.setValueAtTime(0.10,t);
-  g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+  const lfo=sndCtx.createOscillator(), lfoG=sndCtx.createGain();
+  o.type='sine'; lfo.type='sine';
+  o.frequency.setValueAtTime(120,t);
+  lfo.frequency.value=8; lfoG.gain.value=40;
+  lfo.connect(lfoG); lfoG.connect(o.frequency);
+  g.gain.setValueAtTime(0.14,t);
+  g.gain.setValueAtTime(0.14,t+0.35);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
   o.connect(g); g.connect(sndCtx.destination);
-  o.start(t); o.stop(t+0.4);
+  o.start(t); lfo.start(t); o.stop(t+0.5); lfo.stop(t+0.5);
 }
 function sfxEatGhost(){
   ensureSnd(); const t=sndCtx.currentTime;
+  // ascending sweep then settle - satisfying crunch
   const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-  o.type='sawtooth';
-  o.frequency.setValueAtTime(300,t);
-  o.frequency.linearRampToValueAtTime(1200,t+0.12);
-  o.frequency.linearRampToValueAtTime(600,t+0.25);
-  g.gain.setValueAtTime(0.10,t);
-  g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+  o.type='sine';
+  o.frequency.setValueAtTime(196,t);
+  o.frequency.exponentialRampToValueAtTime(1568,t+0.12);
+  o.frequency.exponentialRampToValueAtTime(784,t+0.28);
+  g.gain.setValueAtTime(0.13,t);
+  g.gain.setValueAtTime(0.10,t+0.15);
+  g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
   o.connect(g); g.connect(sndCtx.destination);
-  o.start(t); o.stop(t+0.3);
+  o.start(t); o.stop(t+0.36);
 }
 function sfxDeath(){
   ensureSnd(); const t=sndCtx.currentTime;
-  const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-  o.type='square';
-  o.frequency.setValueAtTime(500,t);
-  o.frequency.linearRampToValueAtTime(80,t+0.7);
-  g.gain.setValueAtTime(0.10,t);
-  g.gain.exponentialRampToValueAtTime(0.001,t+0.8);
-  o.connect(g); g.connect(sndCtx.destination);
-  o.start(t); o.stop(t+0.8);
+  // classic descending spiral
+  for(let i=0;i<11;i++){
+    const o=sndCtx.createOscillator(), g=sndCtx.createGain();
+    o.type='sine';
+    o.frequency.value=860-i*62;
+    const s=t+i*0.11;
+    g.gain.setValueAtTime(0.11,s);
+    g.gain.linearRampToValueAtTime(0,s+0.10);
+    o.connect(g); g.connect(sndCtx.destination);
+    o.start(s); o.stop(s+0.11);
+  }
 }
 function sfxWin(){
   ensureSnd(); const t=sndCtx.currentTime;
-  [523,659,784,1047].forEach((f,i)=>{
+  // victory fanfare
+  const notes=[523,659,784,1047,784,1047];
+  const durs =[0.10,0.10,0.10,0.15,0.08,0.25];
+  let time=t;
+  notes.forEach((f,i)=>{
     const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-    o.type='square'; o.frequency.value=f;
-    g.gain.setValueAtTime(0,t+i*0.12);
-    g.gain.linearRampToValueAtTime(0.09,t+i*0.12+0.03);
-    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.18);
+    o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.11,time);
+    g.gain.exponentialRampToValueAtTime(0.001,time+durs[i]);
     o.connect(g); g.connect(sndCtx.destination);
-    o.start(t+i*0.12); o.stop(t+i*0.12+0.2);
+    o.start(time); o.stop(time+durs[i]+0.01);
+    time+=durs[i];
   });
 }
 function sfxStart(){
   ensureSnd(); const t=sndCtx.currentTime;
-  [262,330,392,523].forEach((f,i)=>{
+  // simplified Pac-Man intro melody
+  const notes=[523,1047,784,659,1047,784,659];
+  const durs =[0.10,0.10,0.10,0.10,0.07,0.14,0.22];
+  let time=t;
+  notes.forEach((f,i)=>{
     const o=sndCtx.createOscillator(), g=sndCtx.createGain();
-    o.type='square'; o.frequency.value=f;
-    g.gain.setValueAtTime(0,t+i*0.08);
-    g.gain.linearRampToValueAtTime(0.08,t+i*0.08+0.02);
-    g.gain.exponentialRampToValueAtTime(0.001,t+i*0.08+0.12);
+    o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.10,time);
+    g.gain.exponentialRampToValueAtTime(0.001,time+durs[i]);
     o.connect(g); g.connect(sndCtx.destination);
-    o.start(t+i*0.08); o.stop(t+i*0.08+0.15);
+    o.start(time); o.stop(time+durs[i]+0.01);
+    time+=durs[i];
   });
 }
+/* score popups */
+let scorePopups=[];
 
 /* ═══ CANVAS ═══ */
 const cv=document.getElementById('c'),
@@ -761,7 +783,9 @@ function checkCollisions(){
     if(g.fright && !g.eaten){
       g.eaten=true; g.fright=false;
       comboMult++;
-      score+=200*comboMult; sfxEatGhost();
+      const pts=200*comboMult;
+      score+=pts; sfxEatGhost();
+      addScorePopup(gp.x,gp.y,pts);
       // send eaten ghost back: allow reversal for responsiveness
       if(g.moving) reverseMover(g);
     } else if(!g.eaten){
@@ -829,15 +853,13 @@ function update(dt){
   });
 
   checkCollisions();
+  updatePopups(dt);
 }
 
 /* ═══ RENDERING ═══ */
 function drawBG(){
-  cx.fillStyle='#06060e';
+  cx.fillStyle='#000';
   cx.fillRect(0,0,cv.width,cv.height);
-  cx.strokeStyle='rgba(0,255,255,.025)'; cx.lineWidth=.5;
-  for(let x=0;x<=cv.width;x+=T){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,cv.height);cx.stroke();}
-  for(let y=0;y<=cv.height;y+=T){cx.beginPath();cx.moveTo(0,y);cx.lineTo(cv.width,y);cx.stroke();}
 }
 
 // Colorize the "HANNAH" letter strokes (top band) for readability without hard-coding every tile.
@@ -856,21 +878,24 @@ function wallColorFor(c,r){
 
 function drawWalls(){
   cx.save();
+  cx.shadowBlur=0;
 
-  // Fill: dark interior like the Google doodle
+  // Solid dark blue fill for wall interiors (Google Doodle style)
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(grid[r][c]!==1) continue;
-    cx.fillStyle='#020206';
+    const col=wallColorFor(c,r);
+    // Dark tinted fill based on wall color
+    cx.fillStyle=col+'18'; // very dark tint of the wall color
     cx.fillRect(c*T, r*T, T, T);
   }
 
-  // Outline: bright neon edges
-  cx.lineWidth=Math.max(2, Math.round(T*0.11));
+  // Clean bright edges (minimal glow, like Google Doodle)
+  cx.lineWidth=Math.max(2, Math.round(T*0.12));
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(grid[r][c]!==1) continue;
     const x=c*T, y=r*T;
     const col=wallColorFor(c,r);
-    cx.shadowBlur=Math.max(8, Math.round(T*0.35));
+    cx.shadowBlur=4;
     cx.shadowColor=col;
     cx.strokeStyle=col;
 
@@ -880,10 +905,10 @@ function drawWalls(){
     if(c===COLS-1||grid[r][c+1]!==1){cx.beginPath();cx.moveTo(x+T,y);cx.lineTo(x+T,y+T);cx.stroke();}
   }
 
-  // Ghost door – magenta bar
-  cx.shadowBlur=Math.max(10, Math.round(T*0.45));
-  cx.shadowColor='#ff4dff';
-  cx.strokeStyle='#ff4dff';
+  // Ghost door – pink bar (clean, minimal glow)
+  cx.shadowBlur=3;
+  cx.shadowColor='#ffaadd';
+  cx.strokeStyle='#ffaadd';
   cx.lineWidth=Math.max(3, Math.round(T*0.14));
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     if(grid[r][c]===6){
@@ -905,38 +930,35 @@ function drawPersonalText(){
   cx.textBaseline='middle';
   const size=Math.max(22, Math.floor(T*2.0));
   cx.font='800 '+size+'px system-ui, -apple-system, Segoe UI, Roboto, Arial';
-  cx.shadowBlur=18;
-  cx.shadowColor='#00e5ff';
-  cx.fillStyle='rgba(220,255,255,.88)';
-  cx.strokeStyle='rgba(0,0,0,.35)';
+  cx.shadowBlur=0;
+  cx.fillStyle='rgba(255,255,255,.7)';
+  cx.strokeStyle='rgba(0,0,0,.3)';
   cx.lineWidth=Math.max(2,Math.round(T*0.12));
   cx.strokeText('HANNAH', cv.width*0.5, T*2.0);
   cx.fillText('HANNAH', cv.width*0.5, T*2.0);
   cx.restore();
 }
 function drawDots(){
-  const dotR=Math.max(T/14, 1.2);          // smaller dots like the doodle
-  const powR=Math.max(T*0.23, dotR*2.2);   // keep power pellets clearly larger
+  const dotR=Math.max(T/12, 1.5);
+  const powR=Math.max(T*0.24, dotR*2.5);
   for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
     const v=grid[r][c];
     const cx0=c*T+T/2, cy0=r*T+T/2;
     if(v===0){
-      cx.save();
-      cx.shadowBlur=Math.max(4, Math.round(T*0.18));
-      cx.shadowColor='rgba(255,240,190,.8)';
-      cx.fillStyle='rgba(255,236,200,.85)';
+      // Classic small white dot
+      cx.fillStyle='#ffeecc';
       cx.beginPath();
       cx.arc(cx0,cy0,dotR,0,Math.PI*2);
       cx.fill();
-      cx.restore();
     }
     if(v===2){
-      const pulse=.72+.28*Math.sin(anim*.09);
+      // Power pellet: gentle pulse, warm white
+      const pulse=.65+.35*Math.sin(anim*.1);
       cx.save();
       cx.globalAlpha=pulse;
-      cx.shadowBlur=Math.max(10, Math.round(T*0.5));
-      cx.shadowColor='rgba(255,255,120,.95)';
-      cx.fillStyle='rgba(255,255,150,.95)';
+      cx.shadowBlur=6;
+      cx.shadowColor='#ffe080';
+      cx.fillStyle='#fff0c0';
       cx.beginPath();
       cx.arc(cx0,cy0,powR,0,Math.PI*2);
       cx.fill();
@@ -947,19 +969,34 @@ function drawDots(){
 
 
 function drawPac(){
-  if(state==='dead'||state==='over') return;
   const p=interpPos(pac);
   const px=p.x*T+T/2, py=p.y*T+T/2, r=T*.44;
+
+  if(state==='dead'||state==='over'){
+    // Death animation: Pac-Man opens mouth wider and deflates
+    const progress=1-Math.max(0,deadTimer)/(state==='dead'?1000:2000);
+    const deathMouth=Math.PI*progress; // mouth opens to full circle
+    const deathR=r*(1-progress*0.4); // shrinks slightly
+    const ang=[Math.PI*1.5,0,Math.PI*.5,Math.PI][pac.dir];
+    cx.save();
+    cx.globalAlpha=1-progress*0.3;
+    cx.fillStyle='#ffe800';
+    cx.beginPath();cx.arc(px,py,deathR,ang+deathMouth,ang+Math.PI*2-deathMouth);
+    cx.lineTo(px,py);cx.closePath();cx.fill();
+    cx.restore();
+    return;
+  }
+
   const mouth=.15+.3*Math.abs(Math.sin(anim*.2));
   const ang=[Math.PI*1.5,0,Math.PI*.5,Math.PI][pac.dir];
-  cx.save();cx.shadowBlur=18;cx.shadowColor='#ff0';cx.fillStyle='#ffe800';
+  cx.save();cx.shadowBlur=6;cx.shadowColor='#ff0';cx.fillStyle='#ffe800';
   cx.beginPath();cx.arc(px,py,r,ang+mouth,ang+Math.PI*2-mouth);
   cx.lineTo(px,py);cx.closePath();cx.fill();cx.restore();
 }
 
 function drawGhostBody(gx,gy,color){
   const r=T*.42;
-  cx.save();cx.shadowBlur=12;cx.shadowColor=color;cx.fillStyle=color;
+  cx.save();cx.shadowBlur=4;cx.shadowColor=color;cx.fillStyle=color;
   cx.beginPath();
   cx.arc(gx,gy-r*.12,r,Math.PI,0,false);
   const bot=gy+r*.82;
@@ -1012,16 +1049,40 @@ function drawHUD(){
   hud.textContent=h;
 }
 
+/* ═══ SCORE POPUPS ═══ */
+function addScorePopup(x,y,pts){
+  scorePopups.push({x:x*T+T/2, y:y*T+T/2, text:''+pts, life:1.0});
+}
+function updatePopups(dt){
+  for(let i=scorePopups.length-1;i>=0;i--){
+    const p=scorePopups[i];
+    p.life-=dt/900; // fade over ~0.9s
+    p.y-=dt*0.04;   // float upward
+    if(p.life<=0) scorePopups.splice(i,1);
+  }
+}
+function drawPopups(){
+  cx.save();
+  cx.textAlign='center';
+  cx.font='bold '+Math.max(T*0.6,11)+'px sans-serif';
+  for(const p of scorePopups){
+    cx.globalAlpha=Math.max(0,p.life);
+    cx.fillStyle='#5ef';
+    cx.fillText(p.text,p.x,p.y);
+  }
+  cx.restore();
+}
+
 function drawOverlay(title,sub){
   cx.save();
   cx.fillStyle='rgba(0,0,0,.72)';
   cx.fillRect(0,0,cv.width,cv.height);
   cx.textAlign='center';
-  cx.shadowBlur=28;cx.shadowColor='#0ff';cx.fillStyle='#0ff';
-  cx.font='bold '+Math.max(T*1.4,18)+'px Courier New,monospace';
+  cx.shadowBlur=0;cx.fillStyle='#fff';
+  cx.font='bold '+Math.max(T*1.4,18)+'px sans-serif';
   cx.fillText(title,cv.width/2,cv.height/2-T);
-  cx.shadowBlur=12;cx.shadowColor='#ff0';cx.fillStyle='#ff4';
-  cx.font=Math.max(T*.6,12)+'px Courier New,monospace';
+  cx.fillStyle='#ffe060';
+  cx.font=Math.max(T*.55,12)+'px sans-serif';
   cx.fillText(sub,cv.width/2,cv.height/2+T);
   cx.restore();
 }
@@ -1031,11 +1092,12 @@ function render(){
   if(state!=='title'){
     ghosts.forEach(g=>drawGhost(g));
     drawPac();
+    drawPopups();
   }
   drawHUD();
-  if(state==='title') drawOverlay('NEON-CHOMP','Press ENTER or Tap to Start');
-  if(state==='over')  drawOverlay('GAME OVER','Score: '+score+'  -  ENTER to Restart');
-  if(state==='win')   drawOverlay('LEVEL CLEAR!','Score: '+score+'  -  ENTER for Next');
+  if(state==='title') drawOverlay('HANNAH\'S PAC-MAN','Press ENTER or Tap to Start');
+  if(state==='over')  drawOverlay('GAME OVER','Score: '+score+'  -  Tap to Restart');
+  if(state==='win')   drawOverlay('LEVEL CLEAR!','Score: '+score+'  -  Tap for Next Level');
 }
 
 /* ═══ MAIN LOOP ═══ */
